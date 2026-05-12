@@ -29,8 +29,10 @@ CAND_FILE  = os.path.join(DATA, "candidates.json")
 for d in [DATA, GIFS_DIR, FRAMES_DIR]:
     os.makedirs(d, exist_ok=True)
 
-cfg = dotenv_values(os.path.join(BASE, ".env"))
-GIPHY_KEY = cfg.get("GIPHY_API_KEY", "")
+_dotenv = dotenv_values(os.path.join(BASE, ".env"))
+cfg = {k: (os.environ.get(k) or _dotenv.get(k, "")) for k in
+       ("GIPHY_API_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET")}
+GIPHY_KEY = cfg["GIPHY_API_KEY"]
 
 OBS_SIZE   = (64, 64)
 BG_SIZE    = (640, 180)
