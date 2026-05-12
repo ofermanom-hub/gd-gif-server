@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NTFY Sound Picker</title>
+<style>
+:root { --bg:#0e0e1a; --card:#16162a; --border:#1e1e30; --accent:#8b5cf6; --green:#22d37a; --text:#c4c4e0; --muted:#555570; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text); font:13px/1.6 'Courier New',monospace; padding:28px 20px; max-width:640px; margin:0 auto; }
+h1 { color:var(--accent); font-size:18px; letter-spacing:2px; text-transform:uppercase; margin-bottom:6px; }
+.sub { color:var(--muted); font-size:11px; margin-bottom:28px; }
+.sound-row {
+  display:flex; align-items:center; gap:10px; padding:12px 14px;
+  background:var(--card); border:1px solid var(--border); border-radius:6px;
+  margin-bottom:8px; transition:border-color .15s;
+}
+.sound-row.active { border-color:var(--accent); }
+.sound-name { flex:1; font-size:13px; font-weight:bold; }
+.sound-name .tag { font-size:9px; color:var(--muted); font-weight:normal; margin-left:6px; }
+.current-badge { font-size:9px; background:#1a0a40; color:var(--accent); padding:2px 6px; border-radius:3px; border:1px solid var(--accent); }
+.btn { padding:6px 14px; border:none; border-radius:4px; cursor:pointer; font:inherit; font-size:11px; font-weight:bold; transition:opacity .15s; white-space:nowrap; }
+.btn:hover { opacity:.85; }
+.btn:disabled { opacity:.35; cursor:default; }
+.btn-play  { background:#1a2040; color:#60a8ff; border:1px solid #2a3060; }
+.btn-phone { background:#1a0840; color:#c080ff; border:1px solid #3a1060; }
+.btn-set   { background:var(--accent); color:#fff; }
+.btn-set.is-current { background:#1a3020; color:var(--green); border:1px solid var(--green); cursor:default; }
+#status { margin-top:20px; font-size:11px; min-height:18px; }
+.ok  { color:var(--green); }
+.err { color:#e84040; }
+.topic-row { display:flex; gap:8px; margin-bottom:20px; align-items:center; }
+.topic-row input {
+  flex:1; background:var(--card); border:1px solid var(--border); color:var(--text);
+  padding:8px 10px; border-radius:4px; font:inherit; font-size:12px;
+}
+.topic-row input:focus { outline:none; border-color:var(--accent); }
+label { font-size:11px; color:var(--muted); }
+</style>
+</head>
+<body>
+
+<h1>🔔 NTFY Sound Picker</h1>
+<p class="sub">Preview sounds in browser or send a test notification to your phone, then set your favourite.</p>
+
+<label>NTFY topic</label>
+<div class="topic-row" style="margin-top:4px">
+  <input id="topic" value="ofer-claude-gd" placeholder="your-ntfy-topic">
+</div>
+
+<div id="sound-list"><p style="color:var(--muted);font-size:12px">Loading sounds…</p></div>
+<div id="status"></div>
+
+<script>
+const SOUNDS = [
+  { id:"ding",       label:"Ding",       url:"https://raw.githubusercontent.com/binwiederhier/ntfy/main/web/src/sounds/ding.mp3" },
+  { id:"juntos",     label:"Juntos",     url:"https://raw.githubusercontent.com/binwiederhier/ntfy/main/web/src/sounds/juntos.mp3" },
+  { id:"pristine",   label:"Pristine",   url:"https://raw.githubusercontent.com/binwiederhier/ntfy/main/web/src/sounds/pristine.mp3" },
+  { id:"dadum",      label:"Dadum",      url:"https://raw.githubusercontent.com/binwiederhier/ntfy/main/web/src/sounds/dadum.mp3" },
+  { id:"pop",        label:"Pop",        url:"https://raw.githubusercontent.com/binwiederhier/ntfy/main/web/src/sounds/pop.mp3" },
+  { id:"pop-swoosh", label:"Pop Swoosh", url:"https://raw.githubusercontent.com/binwiederhier/ntfy/main/web/src/sounds/pop-swoosh.mp3" },
+  { id:"beep",       label:"Beep",       url:"https://raw.githubusercontent.com/binwiederhier/ntfy/main/web/src/sounds/beep.mp3" },
+];
+
+let currentSound = "{{ current_sound }}";
+let activeAudio = null;
+
+function render() {
+  const list = document.getElementById('sound-list');
+  list.innerHTML = SOUNDS.map(s => `
+    <div class="sound-row ${s.id === currentSound ? 'active' : ''}" id="row-${s.id}">
+      <span class="sound-name">
+        ${s.label}
+        ${s.id === currentSound ? '<span class="current-badge">✓ current</span>' : ''}
+      </span>
+      <button class="btn btn-play" onclick="playBrowser('${s.id}','${s.url}')">▶ Preview</button>
+      <button class="btn btn-phone" onclick="sendToPhone('${s.id}')">📱 Test</button>
+      <button class="btn btn-set ${s.id === currentSound ? 'is-current' : ''}"
+              id="set-${s.id}"
+              onclick="setSound('${s.id}')"
+              ${s.id === currentSound ? 'disabled' : ''}>
+        ${s.id === currentSound ? '✓ Set' : 'Set'}
+      </button>
+    </div>`).join('');
+}
+
+function playBrowser(id, url) {
+  if (activeAudio) { activeAudio.pause(); activeAudio.currentTime = 0; }
+  activeAudio = new Audio(url);
+  activeAudio.play().catch(e => setStatus('Browser blocked audio: ' + e.message, true));
+}
+
+async function sendToPhone(soundId) {
+  const topic = document.getElementById('topic').value.trim();
+  if (!topic) { setStatus('Enter your NTFY topic first', true); return; }
+  try {
+    const r = await fetch(`https://ntfy.sh/${topic}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain',
+        'Title': 'Sound test',
+        'Sound': soundId,
+        'Priority': 'default',
+      },
+      body: `Testing sound: ${soundId}`,
+    });
+    if (r.ok) setStatus(`Sent "${soundId}" to your phone ✓`);
+    else setStatus(`NTFY error: ${r.status}`, true);
+  } catch(e) {
+    setStatus('Network error: ' + e.message, true);
+  }
+}
+
+async function setSound(soundId) {
+  const btn = document.getElementById('set-' + soundId);
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    const r = await fetch('/api/set_ntfy_sound', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({sound: soundId}),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      currentSound = soundId;
+      setStatus(`Sound set to "${soundId}" in Claude Code hooks ✓`);
+      render();
+    } else {
+      setStatus('Error: ' + (data.error || 'unknown'), true);
+      btn.disabled = false;
+      btn.textContent = 'Set';
+    }
+  } catch(e) {
+    setStatus('Error: ' + e.message, true);
+    btn.disabled = false;
+    btn.textContent = 'Set';
+  }
+}
+
+function setStatus(msg, isErr=false) {
+  const el = document.getElementById('status');
+  el.innerHTML = `<span class="${isErr ? 'err' : 'ok'}">${msg}</span>`;
+  if (!isErr) setTimeout(() => el.innerHTML = '', 4000);
+}
+
+render();
+</script>
+</body>
+</html>

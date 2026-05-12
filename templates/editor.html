@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mask Editor — {{ gif_id }}</title>
+<style>
+:root {
+  --bg:     #0e0e1a;
+  --card:   #16162a;
+  --border: #1e1e30;
+  --accent: #8b5cf6;
+  --green:  #22d37a;
+  --red:    #e84040;
+  --text:   #c4c4e0;
+  --muted:  #555570;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+             font: 12px/1.5 'Courier New', monospace; }
+
+/* ── Header ── */
+#hdr {
+  display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+  background: var(--card); border-bottom: 1px solid var(--border);
+  height: 44px; flex-shrink: 0; flex-wrap: nowrap; overflow: hidden;
+}
+#hdr a { color: var(--muted); text-decoration: none; font-size: 11px; white-space: nowrap; }
+#hdr a:hover { color: var(--text); }
+#gif-title { color: var(--accent); font-size: 12px; font-weight: bold; flex: 1;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#frame-label { font-size: 11px; color: var(--muted); white-space: nowrap; min-width: 70px; text-align: right; }
+.hdr-btn {
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--card); color: var(--text); cursor: pointer; font: inherit;
+  font-size: 11px; white-space: nowrap; transition: border-color .15s;
+}
+.hdr-btn:hover { border-color: var(--accent); color: var(--accent); }
+#save-btn { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: bold; padding: 8px 18px; font-size: 14px; }
+#save-btn:hover { opacity: .85; }
+#save-btn:disabled { opacity: .4; cursor: default; }
+#status-msg { font-size: 11px; min-width: 120px; color: var(--green); }
+
+/* ── Layout ── */
+#layout {
+  display: flex; height: calc(100vh - 44px - 72px);
+  overflow: hidden;
+}
+
+/* ── Toolbar ── */
+#toolbar {
+  width: 148px; flex-shrink: 0; overflow-y: auto; overflow-x: hidden;
+  background: var(--card); border-right: 1px solid var(--border);
+  padding: 10px 8px; display: flex; flex-direction: column; gap: 14px;
+}
+.section-label {
+  font-size: 9px; letter-spacing: 1.5px; color: var(--muted);
+  text-transform: uppercase; margin-bottom: 6px;
+}
+.tool-btn {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; padding: 6px 8px; border-radius: 4px; border: 1px solid transparent;
+  background: transparent; color: var(--text); cursor: pointer; font: inherit;
+  font-size: 11px; transition: background .1s, border-color .1s;
+}
+.tool-btn:hover { background: #1e1e30; }
+.tool-btn.active { background: #1a0a40; border-color: var(--accent); color: #d4b8ff; }
+.tool-icon { font-size: 14px; line-height: 1; }
+
+/* Brush size */
+input[type=range] {
+  width: 100%; accent-color: var(--accent); cursor: pointer; height: 4px;
+}
+#size-label { font-size: 10px; color: var(--muted); margin-top: 2px; text-align: center; }
+
+/* Checkboxes */
+.check-row {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; cursor: pointer; padding: 3px 0;
+}
+.check-row input { accent-color: var(--accent); cursor: pointer; }
+
+/* Shortcuts */
+.shortcut { font-size: 9px; color: var(--muted); padding: 1px 0; }
+.shortcut b { color: var(--text); }
+
+/* Fill threshold */
+#fill-opts { display: none; }
+#fill-opts.visible { display: block; }
+
+/* ── Canvas area ── */
+#canvas-area {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  overflow: auto; background: #0a0a14; position: relative;
+}
+#canvas-wrap {
+  position: relative; cursor: crosshair;
+  image-rendering: pixelated;
+}
+#display {
+  display: block;
+  image-rendering: pixelated;
+}
+/* Cursor circle overlay drawn in JS via canvas */
+
+/* ── Right panel ── */
+#right-panel {
+  width: 200px; flex-shrink: 0; overflow-y: auto;
+  background: var(--card); border-left: 1px solid var(--border);
+  padding: 10px;
+}
+.panel-title {
+  font-size: 9px; letter-spacing: 1.5px; color: var(--muted);
+  text-transform: uppercase; margin-bottom: 6px;
+}
+#preview {
+  display: block; image-rendering: pixelated; border-radius: 4px;
+  border: 1px solid var(--border); background: #0a0a14;
+  width: 100%; height: auto;
+}
+#poly-preview {
+  display: block; image-rendering: pixelated; border-radius: 4px;
+  border: 1px solid var(--border); background: #0a0a14;
+  width: 100%; height: auto; margin-top: 6px;
+}
+#poly-info { font-size: 10px; color: var(--muted); margin: 4px 0; }
+
+.regen-btn {
+  width: 100%; padding: 5px 8px; border: 1px solid var(--border);
+  border-radius: 4px; background: #1a0a40; color: #d4b8ff;
+  cursor: pointer; font: inherit; font-size: 11px; margin-top: 6px;
+  transition: border-color .15s;
+}
+.regen-btn:hover { border-color: var(--accent); }
+
+/* ── Frame strip ── */
+#frame-strip {
+  height: 72px; flex-shrink: 0;
+  background: var(--card); border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 4px;
+  padding: 6px 10px; overflow-x: auto; overflow-y: hidden;
+}
+.frame-thumb {
+  flex-shrink: 0; cursor: pointer; border-radius: 3px;
+  border: 2px solid transparent; image-rendering: pixelated;
+  opacity: .6; transition: opacity .1s, border-color .1s;
+  height: 52px; width: auto;
+}
+.frame-thumb:hover { opacity: .9; }
+.frame-thumb.active { border-color: var(--accent); opacity: 1; }
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<div id="hdr">
+  <a href="/#pool" title="Back to pool" class="hdr-btn" style="text-decoration:none;padding:8px 16px;font-size:14px;min-width:44px;text-align:center">← Pool</a>
+  <span id="gif-title">✏ {{ gif_id }}</span>
+  <span id="frame-label">1 / –</span>
+  <button class="hdr-btn" id="play-btn" onclick="togglePlay()" title="Space">▶ Play</button>
+  <button class="hdr-btn" onclick="doUndo()" title="Ctrl+Z" style="padding:8px 16px;font-size:14px">↩ Undo</button>
+  <button class="hdr-btn" onclick="doRedo()" title="Ctrl+Y" style="padding:8px 16px;font-size:14px">↪ Redo</button>
+  <span id="status-msg"></span>
+  <button class="hdr-btn" id="save-btn" onclick="saveAll()">💾 Save</button>
+</div>
+
+<!-- ── Main layout ── -->
+<div id="layout">
+
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <div>
+      <div class="section-label">Brush</div>
+      <button class="tool-btn active" id="btn-keep"   onclick="setTool('keep')"   title="B">
+        <span class="tool-icon">🟢</span> Keep
+      </button>
+      <button class="tool-btn"        id="btn-remove" onclick="setTool('remove')" title="R">
+        <span class="tool-icon">🔴</span> Remove
+      </button>
+      <button class="tool-btn"        id="btn-erase"  onclick="setTool('erase')"  title="E">
+        <span class="tool-icon">⬜</span> Erase
+      </button>
+      <button class="tool-btn"        id="btn-fill"   onclick="setTool('fill')"   title="F">
+        <span class="tool-icon">🪣</span> Fill
+      </button>
+    </div>
+
+    <div>
+      <div class="section-label">Size</div>
+      <input type="range" id="brush-size" min="1" max="64" value="32"
+             oninput="brushSize=+this.value; updateSizeLabel()">
+      <div id="size-label">32 px</div>
+      <div id="fill-opts" style="margin-top:8px">
+        <div class="section-label" style="margin-bottom:4px">Tolerance</div>
+        <input type="range" id="fill-tol" min="5" max="120" value="30"
+               oninput="$('tol-label').textContent=this.value">
+        <div id="tol-label" style="font-size:10px;color:var(--muted);text-align:center">30</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Options</div>
+      <label class="check-row">
+        <input type="checkbox" id="all-frames" checked> All frames
+      </label>
+      <label class="check-row">
+        <input type="checkbox" id="show-orig" checked onchange="renderDisplay()"> Orig overlay
+      </label>
+      <label class="check-row">
+        <input type="checkbox" id="show-subj" checked onchange="renderDisplay()"> Rembg result
+      </label>
+      <label class="check-row">
+        <input type="checkbox" id="show-mask" checked onchange="renderDisplay()"> Mask layer
+      </label>
+      <label class="check-row">
+        <input type="checkbox" id="show-poly" checked onchange="renderPreview()"> Polygon
+      </label>
+    </div>
+
+    <div>
+      <div class="section-label">Edit</div>
+      <button class="tool-btn" onclick="clearMask(false)">✕ Clear frame</button>
+      <button class="tool-btn" onclick="clearMask(true)" style="color:var(--red)">✕ Clear all</button>
+      <button class="tool-btn" onclick="removeAll()" style="color:var(--red)">🗑 Remove all</button>
+    </div>
+
+    <div>
+      <div class="section-label">Keys</div>
+      <div class="shortcut"><b>B</b> Keep &nbsp;<b>R</b> Remove</div>
+      <div class="shortcut"><b>E</b> Erase &nbsp;<b>F</b> Fill</div>
+      <div class="shortcut"><b>← →</b> Frames</div>
+      <div class="shortcut"><b>Space</b> Play/pause</div>
+      <div class="shortcut"><b>Ctrl+Z/Y</b> Undo/Redo</div>
+      <div class="shortcut"><b>[ ]</b> Brush size</div>
+      <div class="shortcut"><b>Right-click</b> Erase</div>
+    </div>
+  </div>
+
+  <!-- Canvas area -->
+  <div id="canvas-area">
+    <div id="canvas-wrap">
+      <canvas id="display"></canvas>
+    </div>
+  </div>
+
+  <!-- Right panel -->
+  <div id="right-panel">
+    <div class="panel-title">Result preview</div>
+    <canvas id="preview"></canvas>
+
+    <div class="panel-title" style="margin-top:14px">Polygon</div>
+    <div id="poly-info">–</div>
+    <canvas id="poly-preview"></canvas>
+    <button class="regen-btn" onclick="regenAllPolys()">⟳ Regen from mask</button>
+  </div>
+
+</div>
+
+<!-- Frame strip -->
+<div id="frame-strip" id="frame-strip"></div>
+
+<script>
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+const GIF_ID  = {{ gif_id|tojson }};
+const META    = {{ meta|tojson }};
+
+const FW      = META.frame_width  || 64;
+const FH      = META.frame_height || 64;
+const NFRAMES = META.frame_count  || 1;
+
+// Fit the canvas to the available area (max ~680px on longest side, pixel-perfect integer scale)
+const MAX_PX  = 680;
+const SCALE   = Math.max(1, Math.min(10, Math.floor(MAX_PX / Math.max(FW, FH))));
+const DW      = FW * SCALE;
+const DH      = FH * SCALE;
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let curFrame  = 0;
+let tool      = 'keep';
+let brushSize = 32;
+let isPainting = false;
+let lastFX = -1, lastFY = -1;
+let isPlaying  = false;
+let playTimer  = null;
+
+// Per-frame OffscreenCanvas masks (logical pixel space FW×FH)
+const maskCanvases = Array.from({length: NFRAMES}, () => new OffscreenCanvas(FW, FH));
+
+// Per-frame undo stacks: each entry is an ImageData snapshot
+const undoStacks = Array.from({length: NFRAMES}, () => []);
+const undoIdxs   = new Int32Array(NFRAMES).fill(-1);
+
+// Loaded original / subject images
+const origImgs = new Array(NFRAMES).fill(null);
+const subjImgs = new Array(NFRAMES).fill(null);
+
+// Current polygon per frame (from META or updated after save)
+let polygons = (META.polygons && META.polygons.length === NFRAMES)
+  ? META.polygons : Array.from({length: NFRAMES}, () => []);
+
+// ── Canvas elements ───────────────────────────────────────────────────────────
+const display = document.getElementById('display');
+const preview = document.getElementById('preview');
+const polyPrev= document.getElementById('poly-preview');
+const dCtx    = display.getContext('2d');
+
+display.width  = FW;   display.height  = FH;
+preview.width  = FW;   preview.height  = FH;
+polyPrev.width = FW;   polyPrev.height = FH;
+
+display.style.width  = DW + 'px';
+display.style.height = DH + 'px';
+preview.style.maxHeight = '140px';
+polyPrev.style.maxHeight = '140px';
+
+const $ = id => document.getElementById(id);
+
+// ── Image loading ─────────────────────────────────────────────────────────────
+function loadImg(url) {
+  return new Promise((res, rej) => {
+    const i = new Image();
+    i.onload  = () => res(i);
+    i.onerror = () => res(null);   // silently null on missing subject
+    i.src     = url + '?t=' + Date.now();
+  });
+}
+
+async function initLoad() {
+  $('status-msg').textContent = 'Loading…';
+  const loads = [];
+  for (let i = 0; i < NFRAMES; i++) {
+    loads.push(
+      loadImg(`/api/frame/${GIF_ID}/${i}`).then(img => origImgs[i] = img),
+      loadImg(`/api/subject_frame/${GIF_ID}/${i}`).then(img => subjImgs[i] = img)
+    );
+  }
+  await Promise.all(loads);
+
+  // Initialise undo stacks with blank mask as first state
+  for (let i = 0; i < NFRAMES; i++) {
+    const ctx = maskCanvases[i].getContext('2d');
+    const snap = ctx.getImageData(0, 0, FW, FH);
+    undoStacks[i].push(snap);
+    undoIdxs[i] = 0;
+  }
+
+  buildStrip();
+  switchFrame(0);
+  $('status-msg').textContent = '';
+  togglePlay();
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+function drawChecker(ctx, w, h, sz = Math.max(4, Math.floor(Math.min(w,h)/8))) {
+  const cols = Math.ceil(w / sz), rows = Math.ceil(h / sz);
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      ctx.fillStyle = (r+c)%2===0 ? '#222233' : '#1a1a2a';
+      ctx.fillRect(c*sz, r*sz, sz, sz);
+    }
+}
+
+function renderDisplay() {
+  dCtx.clearRect(0, 0, FW, FH);
+  drawChecker(dCtx, FW, FH);
+
+  if ($('show-orig').checked && origImgs[curFrame]) {
+    dCtx.globalAlpha = 0.38;
+    dCtx.drawImage(origImgs[curFrame], 0, 0, FW, FH);
+    dCtx.globalAlpha = 1;
+  }
+  if ($('show-subj').checked && subjImgs[curFrame]) {
+    dCtx.drawImage(subjImgs[curFrame], 0, 0, FW, FH);
+  }
+  if ($('show-mask').checked) {
+    dCtx.globalAlpha = 0.7;
+    dCtx.drawImage(maskCanvases[curFrame], 0, 0, FW, FH);
+    dCtx.globalAlpha = 1;
+  }
+}
+
+async function renderPreview() {
+  const pCtx = preview.getContext('2d');
+  pCtx.clearRect(0, 0, FW, FH);
+  drawChecker(pCtx, FW, FH);
+
+  if (!subjImgs[curFrame] && !origImgs[curFrame]) return;
+
+  // Composite: subject + mask applied
+  const tmp  = new OffscreenCanvas(FW, FH);
+  const tCtx = tmp.getContext('2d');
+
+  // Base: use subject if available, else original
+  const base = subjImgs[curFrame] || origImgs[curFrame];
+  tCtx.drawImage(base, 0, 0, FW, FH);
+
+  const sData = tCtx.getImageData(0, 0, FW, FH);
+  const mData = maskCanvases[curFrame].getContext('2d').getImageData(0, 0, FW, FH);
+  const oCtx  = new OffscreenCanvas(FW, FH).getContext('2d');
+  if (origImgs[curFrame]) oCtx.drawImage(origImgs[curFrame], 0, 0, FW, FH);
+  const oData = oCtx.getImageData(0, 0, FW, FH);
+
+  const sd = sData.data, md = mData.data, od = oData.data;
+  for (let p = 0; p < md.length; p += 4) {
+    if (md[p+3] > 32) {
+      if (md[p+1] > 100 && md[p] < 100) {     // green = keep
+        sd[p]   = od[p]; sd[p+1] = od[p+1]; sd[p+2] = od[p+2]; sd[p+3] = 255;
+      } else if (md[p] > 100 && md[p+1] < 100) { // red = remove
+        sd[p+3] = 0;
+      }
+    }
+  }
+  tCtx.putImageData(sData, 0, 0);
+  pCtx.drawImage(tmp, 0, 0, FW, FH);
+
+  // Polygon overlay
+  renderPolyPreview();
+  if ($('show-poly').checked) {
+    drawPoly(pCtx, polygons[curFrame], FW, FH, 'rgba(180,80,255,0.9)', 1);
+  }
+}
+
+function renderPolyPreview() {
+  const ctx = polyPrev.getContext('2d');
+  ctx.clearRect(0, 0, FW, FH);
+  drawChecker(ctx, FW, FH);
+  const base = subjImgs[curFrame] || origImgs[curFrame];
+  if (base) ctx.drawImage(base, 0, 0, FW, FH);
+  const poly = polygons[curFrame];
+  if (poly && poly.length) {
+    drawPoly(ctx, poly, FW, FH, 'rgba(220,120,255,0.95)', 1.5);
+    $('poly-info').textContent = poly.length + ' vertices';
+  } else {
+    $('poly-info').textContent = 'No polygon';
+  }
+}
+
+function drawPoly(ctx, poly, w, h, color, lw) {
+  if (!poly || poly.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = lw;
+  ctx.shadowColor = 'rgba(180,80,255,0.6)';
+  ctx.shadowBlur  = 3;
+  ctx.beginPath();
+  ctx.moveTo(poly[0][0] * w, poly[0][1] * h);
+  for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0]*w, poly[i][1]*h);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ── Frame switching ───────────────────────────────────────────────────────────
+function switchFrame(f) {
+  curFrame = (f + NFRAMES) % NFRAMES;
+  $('frame-label').textContent = `${curFrame + 1} / ${NFRAMES}`;
+  document.querySelectorAll('.frame-thumb').forEach((el, i) =>
+    el.classList.toggle('active', i === curFrame));
+  renderDisplay();
+  renderPreview();
+}
+
+// ── Frame strip ───────────────────────────────────────────────────────────────
+function buildStrip() {
+  const strip = $('frame-strip');
+  strip.innerHTML = '';
+  for (let i = 0; i < NFRAMES; i++) {
+    const img = new Image();
+    img.className = 'frame-thumb' + (i === 0 ? ' active' : '');
+    img.title     = `Frame ${i+1}`;
+    img.style.objectFit = 'contain';
+    img.onclick   = () => switchFrame(i);
+    if (origImgs[i]) {
+      const c = new OffscreenCanvas(FW, FH);
+      c.getContext('2d').drawImage(origImgs[i], 0, 0, FW, FH);
+      c.convertToBlob().then(b => img.src = URL.createObjectURL(b));
+    }
+    strip.appendChild(img);
+  }
+}
+
+// ── Brush painting ────────────────────────────────────────────────────────────
+function paintAt(fx, fy, frameIdx) {
+  const ctx = maskCanvases[frameIdx].getContext('2d');
+  ctx.save();
+  if (tool === 'erase') {
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = 'rgba(255,255,255,1)';
+  } else {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = tool === 'keep' ? 'rgba(0,220,80,0.92)' : 'rgba(255,50,50,0.92)';
+  }
+  ctx.beginPath();
+  ctx.arc(fx + 0.5, fy + 0.5, brushSize / 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function paintLine(x0, y0, x1, y1, frameIdx) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const dist  = Math.sqrt(dx*dx + dy*dy);
+  const steps = Math.max(1, Math.ceil(dist / Math.max(1, brushSize * 0.4)));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    paintAt(Math.round(x0 + dx*t), Math.round(y0 + dy*t), frameIdx);
+  }
+}
+
+function getFramePos(e) {
+  const rect = display.getBoundingClientRect();
+  return {
+    fx: Math.floor((e.clientX - rect.left)  * FW / rect.width),
+    fy: Math.floor((e.clientY - rect.top)   * FH / rect.height),
+  };
+}
+
+// ── Flood fill (BFS on original image colors) ─────────────────────────────────
+async function floodFill(startFX, startFY) {
+  const tol   = +$('fill-tol').value;
+  const orig  = origImgs[curFrame];
+  if (!orig) return;
+
+  // Read original pixels
+  const oCanvas = new OffscreenCanvas(FW, FH);
+  oCanvas.getContext('2d').drawImage(orig, 0, 0, FW, FH);
+  const oData = oCanvas.getContext('2d').getImageData(0, 0, FW, FH).data;
+
+  const si   = (startFX + startFY * FW) * 4;
+  const seedR = oData[si], seedG = oData[si+1], seedB = oData[si+2];
+
+  function dist(x, y) {
+    const i = (x + y * FW) * 4;
+    return Math.sqrt((oData[i]-seedR)**2 + (oData[i+1]-seedG)**2 + (oData[i+2]-seedB)**2);
+  }
+
+  const mCtx   = maskCanvases[curFrame].getContext('2d');
+  const mData  = mCtx.getImageData(0, 0, FW, FH);
+  const md     = mData.data;
+
+  const [fr, fg, fb, fa] = tool === 'keep'
+    ? [0, 220, 80, 234]
+    : tool === 'remove'
+      ? [255, 50, 50, 234]
+      : [0, 0, 0, 0];
+
+  const visited = new Uint8Array(FW * FH);
+  const queue   = [startFX + startFY * FW];
+  visited[startFX + startFY * FW] = 1;
+
+  while (queue.length) {
+    const idx = queue.shift();
+    const x   = idx % FW, y = (idx / FW) | 0;
+    if (dist(x, y) > tol) continue;
+
+    const p = idx * 4;
+    md[p] = fr; md[p+1] = fg; md[p+2] = fb; md[p+3] = fa;
+
+    for (const [nx, ny] of [[x-1,y],[x+1,y],[x,y-1],[x,y+1]]) {
+      if (nx >= 0 && nx < FW && ny >= 0 && ny < FH) {
+        const ni = nx + ny * FW;
+        if (!visited[ni]) { visited[ni] = 1; queue.push(ni); }
+      }
+    }
+  }
+  mCtx.putImageData(mData, 0, 0);
+}
+
+// ── Mouse events ──────────────────────────────────────────────────────────────
+display.addEventListener('contextmenu', e => e.preventDefault());
+
+display.addEventListener('mousedown', async e => {
+  e.preventDefault();
+  const {fx, fy} = getFramePos(e);
+  if (fx < 0 || fx >= FW || fy < 0 || fy >= FH) return;
+
+  // Right click = erase override
+  const savedTool = tool;
+  if (e.button === 2) setTool('erase', true);
+
+  saveUndo();
+
+  if (tool === 'fill') {
+    await floodFill(fx, fy);
+    applyMaskToAll(fx, fy, true);
+    renderDisplay();
+    renderPreview();
+    if (e.button === 2) setTool(savedTool, true);
+    return;
+  }
+
+  isPainting = true;
+  lastFX = fx; lastFY = fy;
+  const frames = $('all-frames').checked
+    ? Array.from({length: NFRAMES}, (_, i) => i) : [curFrame];
+  for (const fi of frames) paintAt(fx, fy, fi);
+
+  renderDisplay();
+  renderPreview();
+  if (e.button === 2) setTool(savedTool, true);
+});
+
+display.addEventListener('mousemove', e => {
+  if (!isPainting) return;
+  const {fx, fy} = getFramePos(e);
+  if (fx < 0 || fx >= FW || fy < 0 || fy >= FH) return;
+  if (fx === lastFX && fy === lastFY) return;
+
+  const frames = $('all-frames').checked
+    ? Array.from({length: NFRAMES}, (_, i) => i) : [curFrame];
+  for (const fi of frames) paintLine(lastFX, lastFY, fx, fy, fi);
+
+  lastFX = fx; lastFY = fy;
+  renderDisplay();
+  renderPreview();
+});
+
+window.addEventListener('mouseup', () => { isPainting = false; });
+
+// Apply same fill to all frames (for "all frames" mode)
+function applyMaskToAll(fx, fy, isFill) {
+  if (!$('all-frames').checked || !isFill) return;
+  const mData = maskCanvases[curFrame].getContext('2d').getImageData(0, 0, FW, FH);
+  for (let i = 0; i < NFRAMES; i++) {
+    if (i === curFrame) continue;
+    maskCanvases[i].getContext('2d').putImageData(mData, 0, 0);
+  }
+}
+
+// ── Undo / Redo ───────────────────────────────────────────────────────────────
+function saveUndo() {
+  const fi  = curFrame;
+  const ctx = maskCanvases[fi].getContext('2d');
+  const snap = ctx.getImageData(0, 0, FW, FH);
+  // Truncate redo branch
+  undoStacks[fi].splice(undoIdxs[fi] + 1);
+  undoStacks[fi].push(snap);
+  if (undoStacks[fi].length > 60) undoStacks[fi].shift();
+  undoIdxs[fi] = undoStacks[fi].length - 1;
+}
+
+function doUndo() {
+  const fi = curFrame;
+  if (undoIdxs[fi] <= 0) return;
+  undoIdxs[fi]--;
+  maskCanvases[fi].getContext('2d').putImageData(undoStacks[fi][undoIdxs[fi]], 0, 0);
+  renderDisplay(); renderPreview();
+}
+
+function doRedo() {
+  const fi = curFrame;
+  if (undoIdxs[fi] >= undoStacks[fi].length - 1) return;
+  undoIdxs[fi]++;
+  maskCanvases[fi].getContext('2d').putImageData(undoStacks[fi][undoIdxs[fi]], 0, 0);
+  renderDisplay(); renderPreview();
+}
+
+// ── Tool switching ────────────────────────────────────────────────────────────
+function setTool(t, silent=false) {
+  tool = t;
+  if (!silent) {
+    ['keep','remove','erase','fill'].forEach(n =>
+      $('btn-'+n).classList.toggle('active', n === t));
+    $('fill-opts').classList.toggle('visible', t === 'fill');
+  }
+}
+
+function updateSizeLabel() {
+  $('size-label').textContent = brushSize + ' px';
+}
+
+// ── Clear ─────────────────────────────────────────────────────────────────────
+function clearMask(all) {
+  if (all && !confirm('Clear ALL frame masks?')) return;
+  const targets = all ? Array.from({length:NFRAMES},(_,i)=>i) : [curFrame];
+  for (const fi of targets) {
+    saveUndo();
+    const ctx = maskCanvases[fi].getContext('2d');
+    ctx.clearRect(0, 0, FW, FH);
+  }
+  renderDisplay(); renderPreview();
+}
+
+async function removeAll() {
+  if (!confirm('Erase entire subject across all frames?')) return;
+  for (let fi = 0; fi < NFRAMES; fi++) {
+    saveUndo();
+    const ctx = maskCanvases[fi].getContext('2d');
+    ctx.clearRect(0, 0, FW, FH);
+    ctx.fillStyle = 'rgba(255,0,0,255)';
+    ctx.fillRect(0, 0, FW, FH);
+  }
+  renderDisplay(); renderPreview();
+  await saveAll();
+}
+
+// ── Play / pause ──────────────────────────────────────────────────────────────
+function togglePlay() {
+  isPlaying = !isPlaying;
+  $('play-btn').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+  if (isPlaying) {
+    const spf = 1000 / Math.max(1, META.fps || 10);
+    playTimer = setInterval(() => switchFrame(curFrame + 1), spf);
+  } else {
+    clearInterval(playTimer);
+  }
+}
+
+// ── Regen polygon from current mask preview ───────────────────────────────────
+async function regenAllPolys() {
+  $('status-msg').textContent = 'Regenerating…';
+  // Collect mask data for all frames and send to save_mask endpoint
+  // The server will use existing subject + masks to rebuild polygons
+  const masks = await collectMasks();
+  try {
+    const res  = await fetch(`/api/save_mask/${GIF_ID}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({masks})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      polygons = data.polygons;
+      $('status-msg').textContent = '✓ Polygons updated';
+      // Reload subject images
+      for (let i = 0; i < NFRAMES; i++) {
+        subjImgs[i] = await loadImg(`/api/subject_frame/${GIF_ID}/${i}`);
+      }
+      renderDisplay(); renderPreview();
+    } else {
+      $('status-msg').textContent = '✗ ' + (data.error || 'Error');
+    }
+  } catch(e) {
+    $('status-msg').textContent = '✗ ' + e.message;
+  }
+  setTimeout(() => $('status-msg').textContent = '', 3000);
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+async function collectMasks() {
+  const masks = [];
+  for (let i = 0; i < NFRAMES; i++) {
+    const ctx  = maskCanvases[i].getContext('2d');
+    const idat = ctx.getImageData(0, 0, FW, FH);
+    // Check if mask has any painted pixels
+    const hasPaint = idat.data.some((v, idx) => idx % 4 === 3 && v > 0);
+    if (!hasPaint) { masks.push(''); continue; }
+    const blob = await maskCanvases[i].convertToBlob({type: 'image/png'});
+    const b64  = await new Promise(res => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result.split(',')[1]);
+      fr.readAsDataURL(blob);
+    });
+    masks.push(b64);
+  }
+  return masks;
+}
+
+async function saveAll() {
+  const btn = $('save-btn');
+  btn.disabled = true;
+  $('status-msg').textContent = 'Saving…';
+
+  // Check if any masks are painted
+  let anyPaint = false;
+  for (let i = 0; i < NFRAMES; i++) {
+    const d = maskCanvases[i].getContext('2d').getImageData(0, 0, FW, FH).data;
+    if (d.some((v, idx) => idx % 4 === 3 && v > 0)) { anyPaint = true; break; }
+  }
+  if (!anyPaint) {
+    $('status-msg').textContent = 'No mask painted — nothing to save.';
+    btn.disabled = false;
+    setTimeout(() => $('status-msg').textContent = '', 3000);
+    return;
+  }
+
+  const masks = await collectMasks();
+  try {
+    const res  = await fetch(`/api/save_mask/${GIF_ID}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({masks})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      polygons = data.polygons;
+      $('status-msg').textContent = '✓ Saved!';
+      // Reload subject frames to reflect edits
+      for (let i = 0; i < NFRAMES; i++) {
+        subjImgs[i] = await loadImg(`/api/subject_frame/${GIF_ID}/${i}`);
+      }
+      // Clear all masks (edits are baked in)
+      for (let i = 0; i < NFRAMES; i++) {
+        maskCanvases[i].getContext('2d').clearRect(0, 0, FW, FH);
+        undoStacks[i].length = 0;
+        undoIdxs[i] = -1;
+        const ctx = maskCanvases[i].getContext('2d');
+        undoStacks[i].push(ctx.getImageData(0, 0, FW, FH));
+        undoIdxs[i] = 0;
+      }
+      renderDisplay(); renderPreview();
+    } else {
+      $('status-msg').textContent = '✗ ' + (data.error || 'Server error');
+    }
+  } catch(e) {
+    $('status-msg').textContent = '✗ ' + e.message;
+  }
+  btn.disabled = false;
+  setTimeout(() => $('status-msg').textContent = '', 4000);
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const k = e.key;
+
+  if (k === 'b' || k === 'B') setTool('keep');
+  else if (k === 'r' || k === 'R') setTool('remove');
+  else if (k === 'e' || k === 'E') setTool('erase');
+  else if (k === 'f' || k === 'F') setTool('fill');
+  else if (k === ' ')   { e.preventDefault(); togglePlay(); }
+  else if (k === 'ArrowLeft')  { e.preventDefault(); switchFrame(curFrame - 1); }
+  else if (k === 'ArrowRight') { e.preventDefault(); switchFrame(curFrame + 1); }
+  else if ((k === 'z' || k === 'Z') && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+    e.preventDefault(); doUndo();
+  } else if ((k === 'y' || k === 'Y' || (k === 'z' && e.shiftKey)) && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault(); doRedo();
+  } else if (k === '[') {
+    brushSize = Math.max(1, brushSize - 2);
+    $('brush-size').value = brushSize; updateSizeLabel();
+  } else if (k === ']') {
+    brushSize = Math.min(64, brushSize + 2);
+    $('brush-size').value = brushSize; updateSizeLabel();
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+initLoad();
+</script>
+</body>
+</html>

@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GIF Curator — Geometry Dash</title>
+<style>
+:root {
+  --bg: #12121f;
+  --card: #1a1a2e;
+  --border: #1e1e30;
+  --accent: #8b5cf6;
+  --green: #22d37a;
+  --red: #e84040;
+  --text: #c4c4e0;
+  --muted: #555570;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font: 13px/1.6 'Courier New', monospace; padding: 24px; }
+
+h1 { font-size: 20px; color: var(--accent); letter-spacing: 2px; margin-bottom: 20px; text-transform: uppercase; }
+
+.search-row { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+.search-row input {
+  flex: 1; min-width: 200px;
+  background: var(--card); border: 1px solid var(--border);
+  color: var(--text); padding: 8px 12px; border-radius: 4px; font: inherit;
+}
+.search-row select {
+  background: var(--card); border: 1px solid var(--border);
+  color: var(--text); padding: 8px 10px; border-radius: 4px; font: inherit; cursor: pointer;
+}
+.search-row input:focus, .search-row select:focus { outline: none; border-color: var(--accent); }
+
+.btn { padding: 8px 18px; border: none; border-radius: 4px; cursor: pointer; font: inherit; font-weight: bold; transition: opacity .15s; }
+.btn:hover { opacity: .85; }
+.btn-search  { background: var(--accent); color: #fff; }
+.btn-process { background: #2d1b69; color: #c4a8ff; border: 1px solid var(--accent); }
+.btn-sm { padding: 3px 10px; font-size: 11px; border-radius: 3px; border: none; cursor: pointer; font: inherit; }
+.btn-approve  { background: var(--green); color: #000; }
+.btn-remove   { background: var(--red);   color: #fff; }
+.btn-preview  { background: #1e1040; color: #a78bfa; border: 1px solid #4c1d95; }
+
+.tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; gap: 0; flex-wrap: wrap; }
+.tab { padding: 10px 16px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; user-select: none; white-space: nowrap; font-size: 13px; }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab:hover:not(.active) { color: var(--text); }
+
+.pane { display: none; }
+.pane.active { display: block; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.card img {
+  width: 100%; height: 140px; object-fit: cover; display: block;
+  background: var(--border);
+}
+.card-body { padding: 8px 10px; }
+.card-title { font-size: 10px; color: var(--muted); margin-bottom: 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-foot { display: flex; justify-content: space-between; align-items: center; gap: 4px; flex-wrap: wrap; }
+
+.badge { font-size: 10px; padding: 2px 7px; border-radius: 3px; background: #1a1030; color: var(--accent); }
+.badge.bg  { background: #0a1a20; color: #22b8d3; }
+.badge.ai  { background: #1a0a30; color: #d4a8ff; }
+
+.status { color: var(--muted); font-style: italic; padding: 24px 0; }
+.ok  { color: var(--green); font-size: 11px; }
+.err { color: var(--red);   font-size: 11px; }
+
+.meta-line { font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+/* ── Process progress bar ── */
+.progress-bar-wrap { background: #1a1a2e; border-radius: 4px; overflow: hidden; height: 8px; margin-top: 8px; }
+.progress-bar      { height: 8px; background: var(--accent); transition: width .3s; width: 0%; }
+
+/* ── Modal ── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.82); z-index: 1000;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal-box {
+  background: #16162a; border: 1px solid var(--accent); border-radius: 10px;
+  padding: 20px; max-width: 680px; width: 95%; position: relative;
+}
+.modal-close {
+  position: absolute; top: 10px; right: 14px; cursor: pointer;
+  color: var(--muted); font-size: 18px; background: none; border: none;
+}
+.modal-close:hover { color: var(--text); }
+.modal-img { width: 100%; image-rendering: pixelated; border-radius: 6px; }
+.modal-title { font-size: 13px; color: var(--accent); margin-bottom: 12px; }
+.modal-labels { display: flex; justify-content: space-around; font-size: 10px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>🎬 GIF Curator</h1>
+
+<!-- ── Upload box ── -->
+<div style="background:var(--card);border:1px solid var(--accent);border-radius:8px;padding:16px;margin-bottom:20px">
+  <div style="font-size:14px;font-weight:bold;color:var(--accent);margin-bottom:12px">⬆ Upload your GIFs</div>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <select id="upload-type" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:4px;font:inherit;font-size:14px">
+      <option value="obstacle">Obstacle</option>
+      <option value="background">Background</option>
+    </select>
+    <input id="upload-files" type="file" accept=".gif,image/gif" multiple
+      style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:4px;font:inherit;font-size:14px">
+    <button class="btn btn-search" onclick="doUpload()" style="width:100%;padding:14px;font-size:15px">Upload &amp; Approve</button>
+  </div>
+  <div id="upload-status" style="margin-top:10px;font-size:13px"></div>
+</div>
+
+<div class="search-row">
+  <input id="q" type="text" placeholder="italian brainrot, celebrity animals, funny cat…" value="italian brainrot">
+  <select id="type">
+    <option value="obstacle">Obstacle</option>
+    <option value="background">Background</option>
+  </select>
+  <button class="btn btn-search" onclick="doSearch()">Search Giphy</button>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('results')">Search Results</div>
+  <div class="tab"        onclick="switchTab('pool')">Approved Pool</div>
+  <div class="tab"        onclick="switchTab('gphotos')">📸 Google Photos</div>
+</div>
+
+<div id="results" class="pane active">
+  <p class="status">Search above — results appear here.</p>
+</div>
+
+<div id="pool" class="pane">
+  <p class="status">Loading…</p>
+</div>
+
+<div id="gphotos" class="pane">
+  <!-- Auth bar -->
+  <div id="gp-auth-bar" style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span id="gp-status-dot" style="font-size:18px">⬜</span>
+    <span id="gp-status-text" style="color:var(--muted);font-size:12px">Checking…</span>
+    <button id="gp-connect-btn" class="btn btn-search" style="display:none" onclick="gpConnect()">Connect Google Photos</button>
+    <button id="gp-disconnect-btn" class="btn" style="display:none;background:#2a1030;color:#c4a8ff;border:1px solid var(--accent)" onclick="gpDisconnect()">Disconnect</button>
+  </div>
+
+  <!-- Picker controls -->
+  <div id="gp-sample-bar" style="display:none;margin-bottom:16px;flex-wrap:wrap;gap:10px;align-items:center">
+    <button class="btn btn-search" onclick="gpOpenPicker()" id="gp-sample-btn">📂 Open Video Picker</button>
+    <span style="font-size:11px;color:var(--muted)">Select videos in Google Photos, then click Process</span>
+  </div>
+  <!-- Picker session status -->
+  <div id="gp-picker-status" style="display:none;margin-bottom:12px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px 14px;gap:10px;align-items:center;flex-wrap:wrap">
+    <span id="gp-picker-msg" style="font-size:12px;color:var(--muted);flex:1"></span>
+    <input type="number" id="gp-sample-count" value="100" min="1" max="500" step="10"
+           style="display:none;width:70px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:4px;font:inherit;font-size:12px"
+           title="Random sample size">
+    <span id="gp-count-label" style="display:none;font-size:11px;color:var(--muted)">random</span>
+    <button class="btn btn-search" id="gp-process-btn" onclick="gpProcessPicked()" style="display:none">▶ Process selected videos</button>
+    <button class="btn" onclick="gpOpenPicker()" style="font-size:11px;background:#1a2040;color:#60a8ff;border:1px solid #2a3060">↩ New session</button>
+  </div>
+
+  <!-- Progress -->
+  <div id="gp-progress-wrap" style="display:none;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+      <span id="gp-prog-text" style="font-size:11px;color:var(--muted)"></span>
+      <span id="gp-prog-year" style="font-size:11px;color:var(--accent)"></span>
+      <span id="gp-prog-errors" style="font-size:11px;color:var(--red)"></span>
+    </div>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="gp-prog-bar"></div></div>
+  </div>
+
+  <!-- Filter bar -->
+  <div id="gp-filter-bar" style="display:none;margin-bottom:12px;display:none;gap:8px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:11px;color:var(--muted)">Show:</span>
+    <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer">
+      <input type="checkbox" id="gp-show-pending" checked onchange="gpRenderCandidates()"> Pending
+    </label>
+    <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer">
+      <input type="checkbox" id="gp-show-done" onchange="gpRenderCandidates()"> Approved/Skipped
+    </label>
+    <span id="gp-counts" style="font-size:11px;color:var(--muted);margin-left:8px"></span>
+  </div>
+
+  <!-- Candidates grid -->
+  <div id="gp-grid" class="grid"></div>
+</div>
+
+<!-- ── Preview modal ── -->
+<div class="modal-overlay" id="modal" onclick="closeModal(event)">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModalBtn()">✕</button>
+    <div class="modal-title" id="modal-title">Subject Preview</div>
+    <img class="modal-img" id="modal-img" src="" alt="preview">
+    <div class="modal-labels">
+      <span>Original</span><span>Subject cut</span><span>Neon preview</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) =>
+    t.classList.toggle('active', ['results','pool','gphotos'][i] === name));
+  document.querySelectorAll('.pane').forEach(p =>
+    p.classList.toggle('active', p.id === name));
+  if (name === 'pool')    loadPool();
+  if (name === 'gphotos') gpInit();
+}
+
+// ── Google Photos ─────────────────────────────────────────────────────────────
+let _gpCandidates = [];
+let _gpPollTimer  = null;
+
+async function gpInit() {
+  const res  = await fetch('/api/gphotos/status');
+  const data = await res.json();
+
+  const dot  = $('gp-status-dot');
+  const txt  = $('gp-status-text');
+  const conn = $('gp-connect-btn');
+  const disc = $('gp-disconnect-btn');
+  const sbar = $('gp-sample-bar');
+  const fbar = $('gp-filter-bar');
+
+  if (!data.configured) {
+    dot.textContent  = '⬜';
+    txt.textContent  = 'Not configured — add GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET to .env and restart server.';
+    conn.style.display = 'none';
+    disc.style.display = 'none';
+    return;
+  }
+
+  if (data.authed) {
+    dot.textContent  = '🟢';
+    txt.textContent  = 'Connected to Google Photos';
+    conn.style.display = 'none';
+    disc.style.display = '';
+    sbar.style.display = 'flex';
+    fbar.style.display = 'flex';
+    await gpLoadCandidates();
+    // Resume progress polling if processing is running
+    const prog = await (await fetch('/api/gphotos/sample_progress')).json();
+    if (prog.running) { $('gp-progress-wrap').style.display = 'block'; gpStartPoll(); }
+    // Check for an existing picker session waiting
+    const ps = await (await fetch('/api/gphotos/picker_session_status')).json();
+    if (ps.ok && !ps.no_session) {
+      $('gp-picker-status').style.display = 'flex';
+      if (ps.media_items_set) {
+        $('gp-picker-msg').textContent = '✓ Videos selected! Pick how many to randomly sample:';
+        $('gp-picker-msg').style.color = 'var(--green)';
+        $('gp-sample-count').style.display = 'inline-block';
+        $('gp-count-label').style.display = 'inline';
+        $('gp-process-btn').style.display = 'inline-block';
+      } else {
+        $('gp-picker-msg').textContent = 'Picker session open — select videos then return here.';
+        gpStartPickerPoll();
+      }
+    }
+  } else {
+    dot.textContent  = '🔴';
+    txt.textContent  = 'Not connected';
+    conn.style.display = '';
+    disc.style.display = 'none';
+    sbar.style.display = 'none';
+    fbar.style.display = 'none';
+  }
+}
+
+function gpConnect() {
+  window.location.href = '/api/gphotos/auth';
+}
+
+async function gpDisconnect() {
+  if (!confirm('Disconnect Google Photos? Sampled clips remain cached.')) return;
+  await fetch('/api/gphotos/disconnect', {method: 'POST'});
+  gpInit();
+}
+
+let _gpPickerPollTimer = null;
+
+async function gpOpenPicker() {
+  $('gp-sample-btn').disabled = true;
+  $('gp-sample-btn').textContent = 'Creating session…';
+  try {
+    const res  = await fetch('/api/gphotos/create_picker_session', {method: 'POST'});
+    const data = await res.json();
+    if (!data.ok) { alert(data.error || 'Error creating picker session'); return; }
+    // Open the picker in a new tab
+    window.open(data.picker_uri, '_blank');
+    // Show status bar and start polling
+    const ps = $('gp-picker-status');
+    ps.style.display = 'flex';
+    $('gp-picker-msg').textContent = 'Waiting for you to select videos in the Google Photos picker…';
+    $('gp-process-btn').style.display = 'none';
+    gpStartPickerPoll();
+  } finally {
+    $('gp-sample-btn').disabled = false;
+    $('gp-sample-btn').textContent = '📂 Open Video Picker';
+  }
+}
+
+function gpStartPickerPoll() {
+  if (_gpPickerPollTimer) clearInterval(_gpPickerPollTimer);
+  _gpPickerPollTimer = setInterval(gpPollPickerStatus, 3000);
+}
+
+async function gpPollPickerStatus() {
+  const res  = await fetch('/api/gphotos/picker_session_status');
+  const data = await res.json();
+  if (!data.ok) return;
+  if (data.media_items_set) {
+    clearInterval(_gpPickerPollTimer);
+    _gpPickerPollTimer = null;
+    $('gp-picker-msg').textContent = '✓ Videos selected! Pick how many to randomly sample:';
+    $('gp-picker-msg').style.color = 'var(--green)';
+    $('gp-sample-count').style.display = 'inline-block';
+    $('gp-count-label').style.display = 'inline';
+    $('gp-process-btn').style.display = 'inline-block';
+  }
+}
+
+async function gpProcessPicked() {
+  $('gp-process-btn').disabled = true;
+  $('gp-process-btn').textContent = 'Starting…';
+  const count = +$('gp-sample-count').value || 100;
+  const res  = await fetch(`/api/gphotos/process_picker?count=${count}`, {method: 'POST'});
+  const data = await res.json();
+  if (!data.ok) {
+    alert(data.error || 'Error');
+    $('gp-process-btn').disabled = false;
+    $('gp-process-btn').textContent = '▶ Process selected videos';
+    return;
+  }
+  $('gp-picker-status').style.display = 'none';
+  $('gp-progress-wrap').style.display = 'block';
+  gpStartPoll();
+}
+
+function gpStartPoll() {
+  if (_gpPollTimer) return;
+  _gpPollTimer = setInterval(gpPollProgress, 1500);
+}
+
+async function gpPollProgress() {
+  const prog = await (await fetch('/api/gphotos/sample_progress')).json();
+  const wrap = $('gp-progress-wrap');
+  wrap.style.display = 'block';
+
+  const pct = prog.total > 0 ? (prog.done / prog.total * 100).toFixed(0) : 0;
+  $('gp-prog-bar').style.width = pct + '%';
+
+  $('gp-prog-text').textContent = `Extracting ${prog.done} / ${prog.total}`;
+  $('gp-prog-year').textContent = prog.current_year ? `📅 ${prog.current_year}` : '';
+  $('gp-prog-errors').textContent = prog.errors > 0 ? `${prog.errors} errors` : '';
+
+  await gpLoadCandidates();
+
+  if (!prog.running) {
+    clearInterval(_gpPollTimer);
+    _gpPollTimer = null;
+    $('gp-prog-text').textContent = `Done! ${prog.done} clips extracted.`;
+  }
+}
+
+async function gpLoadCandidates() {
+  const res = await fetch('/api/gphotos/candidates');
+  _gpCandidates = await res.json();
+  gpRenderCandidates();
+}
+
+function gpRenderCandidates() {
+  const showPending = $('gp-show-pending').checked;
+  const showDone    = $('gp-show-done').checked;
+  const pending = _gpCandidates.filter(c => c.status === 'pending');
+  const done    = _gpCandidates.filter(c => c.status !== 'pending');
+
+  $('gp-counts').textContent = `${pending.length} pending · ${done.length} reviewed`;
+
+  const visible = [
+    ...(showPending ? pending : []),
+    ...(showDone    ? done    : []),
+  ];
+
+  if (!visible.length) {
+    $('gp-grid').innerHTML = '<p class="status">' +
+      (_gpCandidates.length ? 'All clips reviewed!' : 'No clips yet — click "Open Video Picker" to select videos.') +
+      '</p>';
+    return;
+  }
+
+  $('gp-grid').innerHTML = visible.map(gpCard).join('');
+}
+
+function gpCard(c) {
+  const yearBadge = `<span class="badge" style="background:#0a1020;color:#60c8ff">📅 ${c.year || '?'}</span>`;
+  const name      = esc(c.filename || c.clip_id);
+  const dur       = c.duration ? c.duration + 's' : '';
+
+  if (c.status !== 'pending') {
+    const obsEditBtn = (c.status === 'obstacle' || c.status === 'both') && c.gif_id
+      ? `<a href="/edit/${c.gif_id}" target="_blank" class="btn-sm" style="background:#1a0a30;color:#c080ff;border:1px solid #3a1a60;text-decoration:none;padding:3px 8px;border-radius:3px;font-size:10px">✏ OBS cutout</a>`
+      : '';
+    const labels = [];
+    if (c.status === 'obstacle' || c.status === 'both') labels.push('<span style="font-size:10px;background:#1a0a30;color:#c080ff;padding:2px 6px;border-radius:3px;border:1px solid #3a1a60">OBS ✓</span>');
+    if (c.status === 'background' || c.status === 'both') labels.push('<span style="font-size:10px;background:#0a2020;color:#22d3b0;padding:2px 6px;border-radius:3px;border:1px solid #1a4040">BG ✓</span>');
+    if (c.status === 'skip') labels.push('<span style="font-size:10px;color:var(--muted)">skipped</span>');
+    return `
+      <div class="card" id="gpc-${c.clip_id}" style="opacity:0.65">
+        <img src="${c.preview_url}" alt="${name}" style="width:100%;height:140px;object-fit:cover">
+        <div class="card-body">
+          <div class="card-title" title="${name}">${name}</div>
+          <div class="card-foot" style="flex-wrap:wrap;gap:4px">
+            ${yearBadge}
+            ${labels.join('')}
+            ${obsEditBtn}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  return `
+    <div class="card" id="gpc-${c.clip_id}">
+      <img src="${c.preview_url}" alt="${name}" loading="lazy"
+           style="width:100%;height:140px;object-fit:cover;cursor:pointer"
+           onclick="gpPreviewFull('${c.clip_id}','${c.preview_url}')">
+      <div class="card-body">
+        <div class="card-title" title="${name}">${name}</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
+          ${yearBadge}
+          <span class="badge" style="background:#0a1a10;color:#80e8a0">${c.frame_count}f</span>
+          ${dur ? `<span class="badge" style="background:#1a1020;color:#b090e0">${dur}</span>` : ''}
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn-sm" style="background:#0a2020;color:#22d3b0;border:1px solid #1a4040"
+                  onclick="gpApprove('${c.clip_id}','background')">BG</button>
+          <button class="btn-sm" style="background:#1a0a30;color:#c080ff;border:1px solid #3a1a60"
+                  onclick="gpApprove('${c.clip_id}','obstacle')">OBS</button>
+          <button class="btn-sm" style="background:#1a1a00;color:#d4d060;border:1px solid #3a3a10"
+                  onclick="gpApprove('${c.clip_id}','both')">Both</button>
+          <button class="btn-sm btn-remove"
+                  onclick="gpSkip('${c.clip_id}')">✕</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function gpApprove(clipId, type) {
+  const card = $('gpc-' + clipId);
+  if (card) card.style.opacity = '0.4';
+  try {
+    const res  = await fetch('/api/gphotos/approve', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({clip_id: clipId, type})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const c = _gpCandidates.find(x => x.clip_id === clipId);
+      if (c) { c.status = type; c.gif_id = data.gif_id; c.gif_id_bg = data.gif_id_bg; }
+      gpRenderCandidates();
+      if ((type === 'obstacle' || type === 'both') && data.gif_id) {
+        window.open('/edit/' + data.gif_id, '_blank');
+      }
+    } else {
+      alert('Error: ' + (data.error || 'unknown'));
+      if (card) card.style.opacity = '1';
+    }
+  } catch(e) {
+    alert('Network error: ' + e.message);
+    if (card) card.style.opacity = '1';
+  }
+}
+
+async function gpSkip(clipId) {
+  const c = _gpCandidates.find(x => x.clip_id === clipId);
+  if (c) { c.status = 'skip'; }
+  gpRenderCandidates();
+  await fetch('/api/gphotos/skip', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({clip_id: clipId})
+  });
+}
+
+// Click-to-expand GIF preview in the existing modal
+function gpPreviewFull(clipId, url) {
+  $('modal-title').textContent = 'Google Photos clip — ' + clipId;
+  $('modal-img').src = url;
+  $('modal-labels').innerHTML = '';
+  $('modal').classList.add('open');
+}
+
+// Handle hash navigation (callback redirect lands on /#gphotos)
+if (window.location.hash === '#gphotos') {
+  history.replaceState(null, '', '/');
+  switchTab('gphotos');
+}
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+async function doUpload() {
+  const files  = $('upload-files').files;
+  const type   = $('upload-type').value;
+  const status = $('upload-status');
+  if (!files.length) { status.innerHTML = '<span class="err">Pick at least one GIF first.</span>'; return; }
+
+  let done = 0, failed = 0;
+  status.innerHTML = `<span style="color:#888">Uploading 0 / ${files.length}…</span>`;
+
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('type', type);
+    try {
+      const res  = await fetch('/api/upload', {method: 'POST', body: fd});
+      const data = await res.json();
+      if (data.ok) done++; else failed++;
+    } catch { failed++; }
+    status.innerHTML = `<span style="color:#888">Uploading ${done + failed} / ${files.length}…</span>`;
+  }
+
+  status.innerHTML = done
+    ? `<span class="ok">✓ ${done} GIF${done>1?'s':''} added to pool${failed ? ` (${failed} failed)` : ''}.</span>`
+    : `<span class="err">All uploads failed — make sure the files are GIFs.</span>`;
+  $('upload-files').value = '';
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+async function doSearch() {
+  const q    = $('q').value.trim() || 'italian brainrot';
+  const type = $('type').value;
+  const pane = $('results');
+  pane.innerHTML = '<p class="status">Searching Giphy…</p>';
+  try {
+    const res  = await fetch(`/api/search?q=${encodeURIComponent(q)}&type=${type}`);
+    const data = await res.json();
+    if (data.error) { pane.innerHTML = `<p class="status err">${data.error}</p>`; return; }
+    renderResults(pane, data.results, type);
+  } catch(e) {
+    pane.innerHTML = `<p class="status err">Network error: ${e.message}</p>`;
+  }
+}
+
+function renderResults(pane, items, type) {
+  if (!items.length) { pane.innerHTML = '<p class="status">No results found.</p>'; return; }
+  pane.innerHTML = `<div class="grid">${items.map(g => resultCard(g, type)).join('')}</div>`;
+}
+
+function resultCard(g, type) {
+  const badgeCls = type === 'background' ? 'badge bg' : 'badge';
+  const action   = g.approved
+    ? `<span class="ok">✓ approved</span>`
+    : `<button class="btn-sm btn-approve" onclick="approve('${g.id}','${type}')">Approve</button>`;
+  return `
+    <div class="card" id="card-${g.id}">
+      <img src="${g.preview_url || ''}" alt="${esc(g.title)}" loading="lazy">
+      <div class="card-body">
+        <div class="card-title" title="${esc(g.title)}">${esc(g.title) || g.id}</div>
+        <div class="card-foot">
+          <span class="${badgeCls}">${type}</span>
+          <span id="act-${g.id}">${action}</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function approve(id, type) {
+  const el = $('act-' + id);
+  el.innerHTML = '<span style="color:#888">Processing…</span>';
+  try {
+    const res  = await fetch(`/api/approve/${id}?type=${type}`, {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    '{}',
+    });
+    const data = await res.json();
+    el.innerHTML = data.ok
+      ? `<span class="ok">✓ approved</span>`
+      : `<span class="err">Error: ${data.error}</span>`;
+  } catch(e) {
+    el.innerHTML = `<span class="err">Error</span>`;
+  }
+}
+
+// ── Pool ──────────────────────────────────────────────────────────────────────
+async function loadPool() {
+  const pane = $('pool');
+  try {
+    const res  = await fetch('/api/pool');
+    const pool = await res.json();
+    const obstacles   = (pool.obstacles   || []).map(g => ({...g, poolType: 'obstacle'}));
+    const backgrounds = (pool.backgrounds || []).map(g => ({...g, poolType: 'background'}));
+    if (!obstacles.length && !backgrounds.length) {
+      pane.innerHTML = '<p class="status">No approved GIFs yet. Search and approve some!</p>';
+      return;
+    }
+    const needsProcessing = obstacles.filter(g => !g.has_subject).length;
+    const processBtn = needsProcessing > 0
+      ? `<div style="margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+           <button class="btn btn-process" onclick="processAll()">🧠 Extract Subjects (${needsProcessing} pending)</button>
+           <div id="proc-status" style="font-size:11px;color:var(--muted)"></div>
+         </div>
+         <div class="progress-bar-wrap" id="proc-wrap" style="display:none;margin-bottom:14px">
+           <div class="progress-bar" id="proc-bar"></div>
+         </div>`
+      : `<div style="margin-bottom:14px;font-size:11px;color:var(--green)">✓ All subjects extracted</div>`;
+    const sectionHdr = (label, count) =>
+      `<h3 style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:18px 0 10px">${label} <span style="color:var(--accent)">(${count})</span></h3>`;
+    const obsSection = obstacles.length
+      ? sectionHdr('Obstacles', obstacles.length) + `<div class="grid">${obstacles.map(poolCard).join('')}</div>`
+      : sectionHdr('Obstacles', 0) + `<p style="font-size:11px;color:var(--muted);margin-bottom:8px">None yet</p>`;
+    const bgSection = backgrounds.length
+      ? sectionHdr('Backgrounds', backgrounds.length) + `<div class="grid">${backgrounds.map(poolCard).join('')}</div>`
+      : sectionHdr('Backgrounds', 0) + `<p style="font-size:11px;color:var(--muted);margin-bottom:8px">None yet</p>`;
+    pane.innerHTML = processBtn + obsSection + bgSection;
+  } catch(e) {
+    pane.innerHTML = `<p class="status err">Error loading pool.</p>`;
+  }
+}
+
+function poolCard(g) {
+  const badgeCls = g.poolType === 'background' ? 'badge bg' : 'badge';
+  const aiBadge  = g.has_subject ? '<span class="badge ai">🧠 AI</span>' : '';
+  const imgSrc = (g.poolType === 'obstacle' && g.has_subject)
+    ? `/api/subject_gif/${g.id}?t=${Date.now()}`
+    : (g.preview_url || '');
+  const img = imgSrc
+    ? `<img src="${imgSrc}" alt="${g.id}" loading="lazy">`
+    : `<div style="height:140px;background:var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px">no preview</div>`;
+  return `
+    <div class="card" id="pool-${g.id}">
+      ${img}
+      <div class="card-body">
+        <div class="card-title">${g.id}</div>
+        <div class="card-foot">
+          <span class="${badgeCls}">${g.poolType}</span>
+          ${aiBadge}
+          <button class="btn-sm btn-preview" onclick="showPreview('${g.id}')">👁 Preview</button>
+          <button class="btn-sm" style="background:#1a2040;color:#a0c4ff;border:1px solid #2a3060" onclick="window.open('/edit/${g.id}','_blank')">✏ Edit</button>
+          <button class="btn-sm btn-remove"  onclick="removeGif('${g.id}')">Remove</button>
+        </div>
+        <div class="meta-line">${g.frame_count} frames &middot; ${g.fps} fps &middot; ${g.frame_width}&times;${g.frame_height}</div>
+      </div>
+    </div>`;
+}
+
+async function removeGif(id) {
+  await fetch(`/api/reject/${id}`, {method: 'POST'});
+  const el = $('pool-' + id);
+  if (el) el.remove();
+}
+
+// ── Subject processing ────────────────────────────────────────────────────────
+let _pollTimer = null;
+
+async function processAll() {
+  const res  = await fetch('/api/process_all_subjects', {method: 'POST'});
+  const data = await res.json();
+  if (!data.ok) { alert(data.error || 'Failed'); return; }
+  $('proc-wrap') && ($('proc-wrap').style.display = 'block');
+  startProgressPoll();
+}
+
+function startProgressPoll() {
+  if (_pollTimer) return;
+  _pollTimer = setInterval(async () => {
+    const res  = await fetch('/api/subject_progress');
+    const prog = await res.json();
+    const pct  = prog.total > 0 ? (prog.done / prog.total * 100).toFixed(0) : 0;
+    const bar  = $('proc-bar');
+    const stat = $('proc-status');
+    if (bar)  bar.style.width = pct + '%';
+    if (stat) stat.textContent = prog.running
+      ? `Processing ${prog.done}/${prog.total}… ${prog.current}`
+      : `Done! ${prog.done} processed.`;
+    if (!prog.running) {
+      clearInterval(_pollTimer);
+      _pollTimer = null;
+      setTimeout(loadPool, 800);  // reload pool to show AI badges
+    }
+  }, 1500);
+}
+
+// ── Preview modal ─────────────────────────────────────────────────────────────
+function showPreview(id) {
+  $('modal-title').textContent = 'Subject Preview — ' + id;
+  $('modal-img').src = `/api/preview/${id}?t=${Date.now()}`;
+  $('modal').classList.add('open');
+}
+
+function closeModal(e) {
+  if (e.target === $('modal')) $('modal').classList.remove('open');
+}
+
+function closeModalBtn() {
+  $('modal').classList.remove('open');
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+
+loadPool();
+
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted) loadPool();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') loadPool();
+});
+</script>
+</body>
+</html>
