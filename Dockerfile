@@ -21,7 +21,8 @@ RUN pip install -r requirements.txt \
 RUN python -c "from rembg import new_session; new_session('u2net')"
 
 COPY . .
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8080
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "4", "--timeout", "300", "server:app"]
+CMD ["/app/entrypoint.sh"]

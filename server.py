@@ -29,26 +29,6 @@ CAND_FILE  = os.path.join(DATA, "candidates.json")
 for d in [DATA, GIFS_DIR, FRAMES_DIR]:
     os.makedirs(d, exist_ok=True)
 
-def _bootstrap_data():
-    url = os.environ.get("DATA_BOOTSTRAP_URL")
-    if not url or os.path.exists(os.path.join(DATA, "pool.json")):
-        return
-    import tarfile, urllib.request
-    print(f"[bootstrap] fetching {url} ...", flush=True)
-    tmp = os.path.join(DATA, "_bootstrap.tgz")
-    try:
-        urllib.request.urlretrieve(url, tmp)
-        with tarfile.open(tmp) as tf:
-            tf.extractall(DATA)
-        print("[bootstrap] extracted into", DATA, flush=True)
-    except Exception as e:
-        print(f"[bootstrap] failed: {e}", flush=True)
-    finally:
-        if os.path.exists(tmp):
-            os.remove(tmp)
-
-_bootstrap_data()
-
 _dotenv = dotenv_values(os.path.join(BASE, ".env"))
 cfg = {k: (os.environ.get(k) or _dotenv.get(k, "")) for k in
        ("GIPHY_API_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET")}
