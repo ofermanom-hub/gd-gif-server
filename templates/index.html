@@ -654,11 +654,12 @@ async function removeGif(id) {
 }
 
 // ── Subject processing ────────────────────────────────────────────────────────
-// rembg + u2net needs ~1GB RAM; Render free has 512MB and OOMs. So when the UI
-// is served remotely, dispatch the extract job to a local server running at
-// http://localhost:8080 (the user's Mac with full RAM + the source GIFs).
-const _isRemote = location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
-const PROC_BASE = _isRemote ? 'http://localhost:8080' : '';
+// rembg + u2net needs ~1GB RAM; Render free has 512MB and OOMs. Only when the
+// UI is served from the cloud host do we dispatch to a separate localhost
+// processor. When served from any local origin (localhost, 127.*, LAN IP),
+// run extraction same-origin so the actual local server handles it.
+const _isCloud  = location.hostname === 'gd-gif-server.onrender.com';
+const PROC_BASE = _isCloud ? 'http://localhost:8080' : '';
 let _pollTimer = null;
 
 async function processAll() {
