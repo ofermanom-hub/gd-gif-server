@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: gd-gif-server
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: U2NET_HOME
+        value: /app/data/.u2net
+      - key: GIPHY_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false

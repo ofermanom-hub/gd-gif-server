@@ -11,24 +11,21 @@ pip install -r requirements.txt
 python server.py       # http://localhost:8080
 ```
 
-## Deploy to Fly.io via GitHub Actions
+## Deploy to Render
+
+`render.yaml` is a Render Blueprint — Render auto-builds the Docker image and redeploys on every push to `main`.
 
 One-time setup:
 
-1. `gh auth login` — re-auth GitHub CLI
-2. Install [flyctl](https://fly.io/docs/flyctl/install/) and `fly auth signup`
-3. Create the app + volume:
-   ```sh
-   fly apps create gd-gif-server
-   fly volumes create gif_data --region fra --size 1
-   fly secrets set GIPHY_API_KEY=xxx
-   fly secrets set GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=xxx
-   ```
-4. Generate a Fly deploy token: `fly tokens create deploy -x 999999h`
-5. Add it as `FLY_API_TOKEN` secret in the GitHub repo (Settings → Secrets → Actions)
+1. Open https://dashboard.render.com/blueprints → **New Blueprint Instance** → pick `ofermanom-hub/gd-gif-server` → apply.
+2. In the new service's **Environment** tab, fill in the secrets (already declared in `render.yaml` as `sync: false`):
+   - `GIPHY_API_KEY`
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
+3. Done — Render builds and exposes the service at `https://gd-gif-server.onrender.com`.
 
-Every push to `main` then builds a Docker image to `ghcr.io/<you>/<repo>` and deploys it to Fly.
+### Caveats on the free plan
 
-## Persistent data
-
-The Fly volume `gif_data` is mounted at `/app/data` (pool, frames, rembg model cache).
+- 512 MB RAM — rembg + u2net is right at the edge; may OOM on heavy GIFs. Upgrade to Starter if so.
+- No persistent disk — `/app/data` resets on every deploy/restart. Curated state is ephemeral until you upgrade.
+- Service spins down after 15 min idle (~30s cold boot on next request).
