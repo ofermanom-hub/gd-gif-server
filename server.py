@@ -46,6 +46,130 @@ _rembg_lock    = threading.Lock()
 # Subject-processing progress tracker
 _subject_progress = {"running": False, "done": 0, "total": 0, "current": ""}
 
+# ── Release-asset persistence (per-GIF tarballs) ──────────────────────────────
+RELEASE_TAG       = os.environ.get("RELEASE_TAG",  "v0.1-data")
+RELEASE_REPO      = os.environ.get("RELEASE_REPO", "ofermanom-hub/gd-gif-server")
+RELEASE_BASE_URL  = f"https://github.com/{RELEASE_REPO}/releases/download/{RELEASE_TAG}"
+META_BUNDLE_FILE  = os.path.join(DATA, "meta-bundle.json")
+# Cloud (Render) sets DATA_BOOTSTRAP_URL; locally that env var is unset.
+IS_LOCAL          = not os.environ.get("DATA_BOOTSTRAP_URL")
+_release_404      = set()   # gif_ids confirmed missing from release; skip re-probing
+_gif_release_404  = set()
+
+def _fetch_gif_from_release(gif_id: str) -> bool:
+    """Lazy-fetch gifs/{gif_id}.gif from a release asset if missing locally."""
+    target = os.path.join(GIFS_DIR, f"{gif_id}.gif")
+    if os.path.exists(target):
+        return True
+    if gif_id in _gif_release_404 or IS_LOCAL:
+        return False
+    import urllib.request, urllib.error
+    url = f"{RELEASE_BASE_URL}/{gif_id}.gif"
+    tmp = target + ".part"
+    try:
+        print(f"[lazy] fetching {url}", flush=True)
+        urllib.request.urlretrieve(url, tmp)
+        os.rename(tmp, target)
+        return True
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            _gif_release_404.add(gif_id)
+        print(f"[lazy] gif failed {gif_id}: {e}", flush=True)
+        return False
+    except Exception as e:
+        print(f"[lazy] gif failed {gif_id}: {e}", flush=True)
+        return False
+    finally:
+        if os.path.exists(tmp):
+            try: os.remove(tmp)
+            except OSError: pass
+
+def _fetch_frame_from_release(gif_id: str) -> bool:
+    """Lazy-fetch frames/{gif_id}/ from a release asset if missing locally.
+    Returns True if local dir is populated after the call."""
+    target = os.path.join(FRAMES_DIR, gif_id)
+    if os.path.exists(os.path.join(target, "meta.json")):
+        return True
+    if gif_id in _release_404 or IS_LOCAL:
+        return os.path.exists(target)
+    import tarfile, urllib.request, urllib.error
+    url = f"{RELEASE_BASE_URL}/frame-{gif_id}.tgz"
+    tmp = os.path.join(DATA, f"_frame-{gif_id}.tgz")
+    try:
+        print(f"[lazy] fetching {url}", flush=True)
+        urllib.request.urlretrieve(url, tmp)
+        with tarfile.open(tmp) as tf:
+            tf.extractall(FRAMES_DIR)
+        return os.path.exists(os.path.join(target, "meta.json"))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            _release_404.add(gif_id)
+        print(f"[lazy] failed {gif_id}: {e}", flush=True)
+        return False
+    except Exception as e:
+        print(f"[lazy] failed {gif_id}: {e}", flush=True)
+        return False
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+def _load_meta_bundle() -> dict:
+    return load_json(META_BUNDLE_FILE, {}) if os.path.exists(META_BUNDLE_FILE) else {}
+
+def _push_frame_to_release(gif_id: str) -> None:
+    """Local-only: package frames/{gif_id}/ into frame-{gif_id}.tgz and upload
+    as a release asset. Also refresh meta-bundle.json on the release."""
+    if not IS_LOCAL:
+        return
+    src = os.path.join(FRAMES_DIR, gif_id)
+    if not os.path.isdir(src):
+        return
+    import tarfile
+    tarball = os.path.join(tempfile.gettempdir(), f"frame-{gif_id}.tgz")
+    try:
+        with tarfile.open(tarball, "w:gz") as tf:
+            tf.add(src, arcname=gif_id)
+        subprocess.run(
+            ["gh", "release", "upload", RELEASE_TAG, tarball,
+             "--clobber", "-R", RELEASE_REPO],
+            check=True, capture_output=True, text=True, timeout=180,
+        )
+        print(f"[release] uploaded frame-{gif_id}.tgz", flush=True)
+        _refresh_meta_bundle_release()
+    except Exception as e:
+        print(f"[release] upload failed for {gif_id}: {e}", flush=True)
+    finally:
+        if os.path.exists(tarball):
+            os.remove(tarball)
+
+def _refresh_meta_bundle_release() -> None:
+    """Local-only: rebuild meta-bundle.json from all local frames/*/meta.json
+    and upload to release with --clobber."""
+    if not IS_LOCAL:
+        return
+    bundle = {}
+    for gif_id in os.listdir(FRAMES_DIR):
+        meta_path = os.path.join(FRAMES_DIR, gif_id, "meta.json")
+        if os.path.exists(meta_path):
+            meta = load_json(meta_path, {})
+            if meta.get("polygons"):
+                bundle[gif_id] = meta
+    bundle_path = os.path.join(tempfile.gettempdir(), "meta-bundle.json")
+    try:
+        with open(bundle_path, "w") as f:
+            json.dump(bundle, f)
+        subprocess.run(
+            ["gh", "release", "upload", RELEASE_TAG, bundle_path,
+             "--clobber", "-R", RELEASE_REPO],
+            check=True, capture_output=True, text=True, timeout=120,
+        )
+        print(f"[release] refreshed meta-bundle.json ({len(bundle)} entries)", flush=True)
+    except Exception as e:
+        print(f"[release] meta-bundle upload failed: {e}", flush=True)
+    finally:
+        if os.path.exists(bundle_path):
+            os.remove(bundle_path)
+
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -61,10 +185,11 @@ def save_json(path, data):
 
 def load_pool():
     pool = load_json(POOL_FILE, {"obstacles": [], "backgrounds": []})
+    bundle = _load_meta_bundle()
     for key in ("obstacles", "backgrounds"):
         for entry in pool[key]:
             meta_path = os.path.join(FRAMES_DIR, entry["id"], "meta.json")
-            meta = load_json(meta_path, {})
+            meta = load_json(meta_path, {}) if os.path.exists(meta_path) else bundle.get(entry["id"], {})
             entry["polygons"]    = meta.get("polygons", [])
             entry["has_subject"] = bool(entry["polygons"])
             # Fill missing preview_url for uploaded/approved GIFs
@@ -422,6 +547,7 @@ def get_pool():
 
 @app.route("/api/gif/<gif_id>")
 def get_raw_gif(gif_id):
+    _fetch_gif_from_release(gif_id)
     path = os.path.join(GIFS_DIR, f"{gif_id}.gif")
     if not os.path.exists(path):
         return jsonify({"error": "not found"}), 404
@@ -430,6 +556,7 @@ def get_raw_gif(gif_id):
 
 @app.route("/api/spritesheet/<gif_id>")
 def get_spritesheet(gif_id):
+    _fetch_frame_from_release(gif_id)
     path = os.path.join(FRAMES_DIR, gif_id, "spritesheet.png")
     if not os.path.exists(path):
         return jsonify({"error": "not found"}), 404
@@ -438,6 +565,7 @@ def get_spritesheet(gif_id):
 
 @app.route("/api/subject/<gif_id>")
 def get_subject(gif_id):
+    _fetch_frame_from_release(gif_id)
     path = os.path.join(FRAMES_DIR, gif_id, "subject_spritesheet.png")
     if not os.path.exists(path):
         return jsonify({"error": "not found"}), 404
@@ -447,6 +575,7 @@ def get_subject(gif_id):
 @app.route("/api/subject_frame/<gif_id>")
 def get_subject_frame(gif_id):
     """Return the first frame of the subject spritesheet as a standalone PNG."""
+    _fetch_frame_from_release(gif_id)
     meta_path = os.path.join(FRAMES_DIR, gif_id, "meta.json")
     subj_path = os.path.join(FRAMES_DIR, gif_id, "subject_spritesheet.png")
     if not os.path.exists(subj_path):
@@ -465,6 +594,7 @@ def get_subject_frame(gif_id):
 @app.route("/api/subject_gif/<gif_id>")
 def get_subject_gif(gif_id):
     """Return subject spritesheet as an animated GIF (RGBA frames on dark bg)."""
+    _fetch_frame_from_release(gif_id)
     meta_path = os.path.join(FRAMES_DIR, gif_id, "meta.json")
     subj_path = os.path.join(FRAMES_DIR, gif_id, "subject_spritesheet.png")
     if not os.path.exists(subj_path):
@@ -493,6 +623,7 @@ def get_subject_gif(gif_id):
 @app.route("/api/preview/<gif_id>")
 def get_preview(gif_id):
     """Return a composite preview PNG: original | subject cut | neon sim."""
+    _fetch_frame_from_release(gif_id)
     meta_path = os.path.join(FRAMES_DIR, gif_id, "meta.json")
     meta      = load_json(meta_path, {})
 
