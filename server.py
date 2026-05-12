@@ -551,6 +551,20 @@ def get_preview(gif_id):
     return send_file(buf, mimetype="image/png")
 
 
+@app.after_request
+def _cors(resp):
+    # Allow the public Render UI to dispatch heavy jobs to a local instance
+    if request.path in ("/api/process_all_subjects", "/api/subject_progress"):
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return resp
+
+@app.route("/api/process_all_subjects", methods=["OPTIONS"])
+@app.route("/api/subject_progress",     methods=["OPTIONS"])
+def _cors_preflight():
+    return ("", 204)
+
 @app.route("/api/process_all_subjects", methods=["POST"])
 def process_all_subjects():
     """Queue subject extraction for all approved GIFs lacking polygon data."""

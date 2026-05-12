@@ -654,10 +654,21 @@ async function removeGif(id) {
 }
 
 // ── Subject processing ────────────────────────────────────────────────────────
+// rembg + u2net needs ~1GB RAM; Render free has 512MB and OOMs. So when the UI
+// is served remotely, dispatch the extract job to a local server running at
+// http://localhost:8080 (the user's Mac with full RAM + the source GIFs).
+const _isRemote = location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
+const PROC_BASE = _isRemote ? 'http://localhost:8080' : '';
 let _pollTimer = null;
 
 async function processAll() {
-  const res  = await fetch('/api/process_all_subjects', {method: 'POST'});
+  let res;
+  try {
+    res = await fetch(PROC_BASE + '/api/process_all_subjects', {method: 'POST'});
+  } catch (e) {
+    alert('Local server not reachable at localhost:8080. Start it with:\n\n  cd gif_server && python server.py');
+    return;
+  }
   const data = await res.json();
   if (!data.ok) { alert(data.error || 'Failed'); return; }
   $('proc-wrap') && ($('proc-wrap').style.display = 'block');
@@ -667,7 +678,15 @@ async function processAll() {
 function startProgressPoll() {
   if (_pollTimer) return;
   _pollTimer = setInterval(async () => {
-    const res  = await fetch('/api/subject_progress');
+    let res;
+    try {
+      res = await fetch(PROC_BASE + '/api/subject_progress');
+    } catch (e) {
+      clearInterval(_pollTimer); _pollTimer = null;
+      const stat = $('proc-status');
+      if (stat) stat.textContent = 'Local server disconnected.';
+      return;
+    }
     const prog = await res.json();
     const pct  = prog.total > 0 ? (prog.done / prog.total * 100).toFixed(0) : 0;
     const bar  = $('proc-bar');
