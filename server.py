@@ -753,7 +753,7 @@ GPHOTOS_CAND_FILE        = os.path.join(DATA, "gphotos_candidates.json")
 GPHOTOS_TOKEN_FILE       = os.path.join(DATA, "gphotos_token.json")
 GPHOTOS_PICKER_FILE      = os.path.join(DATA, "gphotos_picker_session.json")
 GP_SCOPES                = ["https://www.googleapis.com/auth/photospicker.mediaitems.readonly"]
-GP_REDIRECT_URI          = "http://localhost:8080/api/gphotos/callback"
+GP_REDIRECT_URI          = os.environ.get("GP_REDIRECT_URI", "http://localhost:8080/api/gphotos/callback")
 
 os.makedirs(GPHOTOS_CLIPS_DIR, exist_ok=True)
 
